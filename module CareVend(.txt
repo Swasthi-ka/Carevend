@@ -1,0 +1,99 @@
+module CareVend(
+    input clk,                    // System clock
+    input reset,                  // System reset
+    input [3:0] item_select,      // 4-bit selection for items
+    input payment_valid,          // Signal for payment validation (1 if valid, 0 otherwise)
+    output reg dispense_item,     // Signal to dispense item
+    output reg [3:0] item_status, // Status of selected item (availability)
+    output reg error              // Error signal (e.g., out of stock, invalid payment)
+);
+
+    // Parameters for item codes
+    parameter ITEM_SANITARY = 4'b0001;
+    parameter ITEM_PARA = 4'b0010;
+    parameter ITEM_TISSUE = 4'b0011;
+    parameter ITEM_CHOCOLATE = 4'b0100;
+    parameter ITEM_GLUCOSE = 4'b0101;
+    parameter ITEM_PEN = 4'b0110;
+
+    // Inventory tracking (example: availability of each item)
+    reg [3:0] inventory [5:0]; // 6 slots for items
+
+    // State machine states
+    typedef enum reg [1:0] {
+        IDLE,          // Waiting for user input
+        VALIDATE,      // Validating payment
+        DISPENSE,      // Dispensing item
+        ERROR_STATE    // Error handling
+    } state_type;
+
+    state_type current_state, next_state;
+
+    // Initialize inventory (example: each item starts with 5 units)
+    initial begin
+        inventory[0] = 5; // Sanitary napkins
+        inventory[1] = 5; // Paracetamol
+        inventory[2] = 5; // Tissues
+        inventory[3] = 5; // Chocolates
+        inventory[4] = 5; // Glucose sachets
+        inventory[5] = 5; // Pens
+    end
+
+    // Sequential block for state transitions
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            current_state <= IDLE;
+        end else begin
+            current_state <= next_state;
+        end
+    end
+
+    // Combinational block for next state logic and outputs
+    always @(*) begin
+        // Default outputs
+        dispense_item = 0;
+        error = 0;
+        item_status = 4'b0000;
+        next_state = current_state;
+
+        case (current_state)
+            IDLE: begin
+                if (item_select != 4'b0000) begin
+                    // Check if selected item is in stock
+                    if (inventory[item_select - 1] > 0) begin
+                        next_state = VALIDATE;
+                    end else begin
+                        next_state = ERROR_STATE;
+                        error = 1; // Out of stock
+                    end
+                end
+            end
+
+            VALIDATE: begin
+                if (payment_valid) begin
+                    next_state = DISPENSE;
+                end else begin
+                    next_state = ERROR_STATE;
+                    error = 1; // Invalid payment
+                end
+            end
+
+            DISPENSE: begin
+                dispense_item = 1;
+                inventory[item_select - 1] = inventory[item_select - 1] - 1; // Decrease stock
+                item_status = inventory[item_select - 1];
+                next_state = IDLE;
+            end
+
+            ERROR_STATE: begin
+                // Stay in error state until reset
+                next_state = IDLE;
+            end
+
+            default: begin
+                next_state = IDLE;
+            end
+        endcase
+    end
+
+endmodule
